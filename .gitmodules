@@ -1,0 +1,3 @@
+[submodule "GenericControlBoard"]
+	path = GenericControlBoard
+	url = git@github.com:takaki-maeda-99/GenericControlBoard.git
