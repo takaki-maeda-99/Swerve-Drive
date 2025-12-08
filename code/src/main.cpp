@@ -43,6 +43,33 @@ constexpr std::array<WheelPosition, NUM_WHEELS> wheelPositions{{
 #define DIP_PIN1 12
 #define DIP_PIN2 13
 
+//オドメトリのエンコーダーのピンの定義
+#define ODOMETRY_X_ENCODER_A_PIN 10
+#define ODOMETRY_X_ENCODER_B_PIN 11
+#define ODOMETRY_Y_ENCODER_A_PIN 14
+#define ODOMETRY_Y_ENCODER_B_PIN 15
+
+//オドメトリエンコーダー変数
+volatile int32_t encoderX_count = 0;
+volatile int32_t encoderY_count = 0;
+volatile uint32_t lastSpeedUpdate = 0;
+volatile int32_t lastEncoderX_count = 0;
+volatile int32_t lastEncoderY_count = 0;
+float speedX = 0.0f;  // [m/s] X方向の線速度
+float speedY = 0.0f;  // [m/s] Y方向の線速度
+
+// エンコーダー仕様と計算定数
+const float ENCODER_RESOLUTION = 100.0f;    // パルス/回転 (PPR)
+const float WHEEL_DIAMETER = 0.038f;        // ホイール直径 [m] (38mm)
+const float WHEEL_CIRCUMFERENCE = PI * WHEEL_DIAMETER; // 円周 [m]
+const uint32_t SPEED_UPDATE_INTERVAL = 10; // 速度更新間隔 [ms]
+
+// オドメトリ速度送信フレーム（ID: 0x200）の構造体
+struct OdometrySpeedFrame {
+  float speedX;             // 4バイト
+  float speedY;             // 4バイト
+} __attribute__((packed));
+
 FlexCAN_T4<CAN1, RX_SIZE_256, TX_SIZE_16> can1;
 FlexCAN_T4<CAN2, RX_SIZE_256, TX_SIZE_16> can2;
 DjiMotorCan<CAN2> steer_motors(can2, 72.0f);  // 72:1 ギア比で初期化
@@ -258,6 +285,84 @@ void homing(){
     motorControlTimer.priority(0);
 }
 
+// エンコーダー割り込み処理 (X方向)
+void encoderX_ISR() {
+    int stateA = digitalRead(ODOMETRY_X_ENCODER_A_PIN);
+    int stateB = digitalRead(ODOMETRY_X_ENCODER_B_PIN);
+
+    // A相の変化でカウント、B相の状態で方向判定 (A=Bなら順方向、A!=Bなら逆方向)
+    if (stateA == stateB) {
+        encoderX_count++;
+    } else {
+        encoderX_count--;
+    }
+}
+
+// エンコーダー割り込み処理 (Y方向)
+void encoderY_ISR() {
+    int stateA = digitalRead(ODOMETRY_Y_ENCODER_A_PIN);
+    int stateB = digitalRead(ODOMETRY_Y_ENCODER_B_PIN);
+
+    // A相の変化でカウント、B相の状態で方向判定
+    if (stateA == stateB) {
+        encoderY_count++;
+    } else {
+        encoderY_count--;
+    } 
+}
+
+// 速度計算関数
+void updateOdometrySpeed() {
+    uint32_t currentTime = millis();
+    if (currentTime - lastSpeedUpdate >= SPEED_UPDATE_INTERVAL) {
+        // 時間間隔を計算 [s]
+        float deltaTime = (currentTime - lastSpeedUpdate) / 1000.0f;
+        
+        // エンコーダーカウントの差分を計算
+        int32_t deltaX = encoderX_count - lastEncoderX_count;
+        int32_t deltaY = encoderY_count - lastEncoderY_count;
+        
+        // 回転数に変換 [回転/s]
+        // rps = (delta_count / ENCODER_RESOLUTION) / deltaTime
+        float rpsX = deltaX / (ENCODER_RESOLUTION * deltaTime);
+        float rpsY = deltaY / (ENCODER_RESOLUTION * deltaTime);
+        
+        // 線速度に変換 [m/s]
+        // speed = rps * WHEEL_CIRCUMFERENCE
+        speedX = rpsX * WHEEL_CIRCUMFERENCE;
+        speedY = rpsY * WHEEL_CIRCUMFERENCE;
+        
+        // 前回値を更新
+        lastEncoderX_count = encoderX_count;
+        lastEncoderY_count = encoderY_count;
+        lastSpeedUpdate = currentTime;
+    }
+}
+
+// オドメトリ速度をCANで送信
+void sendOdometrySpeedToCAN() {
+    CAN_message_t msg;
+    msg.id = 0x200; // オドメトリ速度を示すCAN ID
+    msg.len = 8;    // float (4バイト) * 2 = 8バイト
+    
+    OdometrySpeedFrame frame;
+    frame.speedX = speedX;
+    frame.speedY = speedY;
+    
+    // 構造体をメッセージバッファにコピー
+    memcpy(msg.buf, &frame, sizeof(frame));
+    can1.write(msg);
+}
+
+// オドメトリ速度取得関数
+float getSpeedX() {
+    return speedX;
+}
+
+float getSpeedY() {
+    return speedY;
+}
+
 
 uint8_t readBoardId() {
     uint8_t id = 0;
@@ -289,15 +394,36 @@ void setup() {
   pinMode(LSPIN32, INPUT_PULLUP);
   pinMode(LSPIN41, INPUT_PULLUP);
   pinMode(LSPIN42, INPUT_PULLUP);
+  pinMode(ODOMETRY_X_ENCODER_A_PIN, INPUT_PULLUP);
+  pinMode(ODOMETRY_X_ENCODER_B_PIN, INPUT_PULLUP);
+  pinMode(ODOMETRY_Y_ENCODER_A_PIN, INPUT_PULLUP);
+  pinMode(ODOMETRY_Y_ENCODER_B_PIN, INPUT_PULLUP);
+
+  // エンコーダー割り込み設定（立ち上がりのみ）
+  // RISINGのみに設定されているが、ISRの実装は両方の変化を捕捉する四倍速エンコーディングに基づいているため、注意が必要
+  attachInterrupt(digitalPinToInterrupt(ODOMETRY_X_ENCODER_A_PIN), encoderX_ISR, RISING);
+  attachInterrupt(digitalPinToInterrupt(ODOMETRY_Y_ENCODER_A_PIN), encoderY_ISR, RISING);
 
 // モーター制御タイマー開始 (1kHz = 1000μs間隔)
   motorControlTimer.begin(ISR, 1000);
   motorControlTimer.priority(128);
 
-    homing();  
+    //homing();  
 }
 
 void loop() {
+    // オドメトリ速度更新とCAN送信
+    updateOdometrySpeed();
+    sendOdometrySpeedToCAN();
+
+    // シリアルモニタへ速度を出力
+    // Serial.print("SpeedX: ");
+    // Serial.print(getSpeedX());
+    // Serial.print(" m/s, SpeedY: ");
+    // Serial.print(getSpeedY());
+    // Serial.println(" m/s");
+    Serial.printf("SpeedX: %.3f m/s, SpeedY: %.3f m/s\n", getSpeedX(), getSpeedY());
+
     if (controller.poll()) {
         const ControllerData &d = controller.data();
 
