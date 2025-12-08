@@ -339,21 +339,6 @@ void updateOdometrySpeed() {
     }
 }
 
-// オドメトリ速度をCANで送信
-void sendOdometrySpeedToCAN() {
-    CAN_message_t msg;
-    msg.id = 0x200; // オドメトリ速度を示すCAN ID
-    msg.len = 8;    // float (4バイト) * 2 = 8バイト
-    
-    OdometrySpeedFrame frame;
-    frame.speedX = speedX;
-    frame.speedY = speedY;
-    
-    // 構造体をメッセージバッファにコピー
-    memcpy(msg.buf, &frame, sizeof(frame));
-    can1.write(msg);
-}
-
 // オドメトリ速度取得関数
 float getSpeedX() {
     return speedX;
