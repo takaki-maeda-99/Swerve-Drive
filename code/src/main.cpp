@@ -1,8 +1,8 @@
 #include <FlexCAN_T4.h>
 #include <IntervalTimer.h>
-#include "../lib/DjiMotor.hpp"
-#include "../lib/PID.h"
-#include "../lib/ControllerInput.h"
+#include "DjiMotor.hpp"
+#include "PID.h"
+#include "ControllerInput.h"
 #include <array>
 #include <cmath>
 
@@ -101,18 +101,18 @@ Pid AnglePid[4] = {
 
 // ステア速度用 PID
 Pid SteerSpeedPid[4] = {
-    Pid(1500, 0, 0, -8000.0, 8000.0, 1), // wheel 0
-    Pid(1500, 0, 0, -8000.0, 8000.0, 1), // wheel 1
-    Pid(1500, 0, 0, -8000.0, 8000.0, 1), // wheel 2
-    Pid(1500, 0, 0, -8000.0, 8000.0, 1), // wheel 3
+    Pid(1000, 0, 0, -8000.0, 8000.0, 1), // wheel 0
+    Pid(1000, 0, 0, -8000.0, 8000.0, 1), // wheel 1
+    Pid(1000, 0, 0, -8000.0, 8000.0, 1), // wheel 2
+    Pid(1000, 0, 0, -8000.0, 8000.0, 1), // wheel 3
 };
 
 // ホイール速度用 PID
 Pid WheelSpeedPid[4] = {
-    Pid(305, 0, 0, -16000.0, 16000.0, 1), // wheel 0
-    Pid(305, 0, 0, -16000.0, 16000.0, 1), // wheel 1
-    Pid(305, 0, 0, -16000.0, 16000.0, 1), // wheel 2
-    Pid(305, 0, 0, -16000.0, 16000.0, 1), // wheel 3
+    Pid(1600, 0, 10, -14000.0, 14000.0, 1), // wheel 0
+    Pid(1600, 0, 10, -14000.0, 14000.0, 1), // wheel 1
+    Pid(1600, 0, 10, -14000.0, 14000.0, 1), // wheel 2
+    Pid(1600, 0, 10, -14000.0, 14000.0, 1), // wheel 3
 };
 
 inline void steer_angleControl(size_t idx, float targetAngle, bool bounded, DjiMotorCan<CAN2> &motors) {
@@ -268,13 +268,13 @@ void homing(){
                 homingComplete[i] = true;
             }
             else if(ls1) {
-                steer_speedControl(i, 10, steer_motors);
+                steer_speedControl(i, 2, steer_motors);
             }
-            else if(ls2) {
-                steer_speedControl(i, -5, steer_motors);
-            }
+            // else if(ls2) {
+            //     steer_speedControl(i, -3, steer_motors);
+            // }
             else{
-                steer_speedControl(i, 30, steer_motors);
+                steer_speedControl(i, 20, steer_motors);
             }
         }
         steer_motors.flush();
@@ -393,13 +393,12 @@ void setup() {
   motorControlTimer.begin(ISR, 1000);
   motorControlTimer.priority(128);
 
-    //homing();  
+    homing();  
 }
 
 void loop() {
     // オドメトリ速度更新とCAN送信
     updateOdometrySpeed();
-    sendOdometrySpeedToCAN();
 
     // シリアルモニタへ速度を出力
     // Serial.print("SpeedX: ");
@@ -419,7 +418,7 @@ void loop() {
         // Scale controller inputs to chassis velocities.
         vx = (d.ly / kStickMax) * kMaxLinear;
         vy = (d.lx / kStickMax) * kMaxLinear;
-        wz = ((d.r2 - d.l2) / kTriggerMax) * kMaxYawRate;
+        wz = (d.rx / kStickMax) * kMaxYawRate;
 
 
         if (d.buttons.triangle) {
