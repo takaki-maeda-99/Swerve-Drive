@@ -59,7 +59,7 @@ float speedX = 0.0f;  // [m/s] X方向の線速度
 float speedY = 0.0f;  // [m/s] Y方向の線速度
 
 // エンコーダー仕様と計算定数
-const float ENCODER_RESOLUTION = 100.0f;    // パルス/回転 (PPR)
+const float ENCODER_RESOLUTION = 360.0f;    // パルス/回転 (PPR)
 const float WHEEL_DIAMETER = 0.038f;        // ホイール直径 [m] (38mm)
 const float WHEEL_CIRCUMFERENCE = PI * WHEEL_DIAMETER; // 円周 [m]
 const uint32_t SPEED_UPDATE_INTERVAL = 10; // 速度更新間隔 [ms]
@@ -75,7 +75,7 @@ FlexCAN_T4<CAN2, RX_SIZE_256, TX_SIZE_16> can2;
 DjiMotorCan<CAN2> steer_motors(can2, 72.0f);  // 72:1 ギア比で初期化
 DjiMotorCan<CAN1> wheel_motors(can1, 19.0f);  // 19:1 ギア比で初期化
 
-ControllerInput controller(Serial4);
+ControllerInput controller(Serial);
 IntervalTimer motorControlTimer;
 
 uint8_t myBoardId = 1;
@@ -270,9 +270,6 @@ void homing(){
             else if(ls1) {
                 steer_speedControl(i, 2, steer_motors);
             }
-            // else if(ls2) {
-            //     steer_speedControl(i, -3, steer_motors);
-            // }
             else{
                 steer_speedControl(i, 20, steer_motors);
             }
@@ -358,7 +355,7 @@ uint8_t readBoardId() {
 
 
 void setup() {
-  Serial.begin(57600);
+//   Serial.begin(57600);
   controller.begin(115200);
   
   // DIPスイッチピン設定
@@ -393,7 +390,7 @@ void setup() {
   motorControlTimer.begin(ISR, 1000);
   motorControlTimer.priority(128);
 
-    homing();  
+    // homing();  
 }
 
 void loop() {
@@ -401,12 +398,14 @@ void loop() {
     updateOdometrySpeed();
 
     // シリアルモニタへ速度を出力
-    // Serial.print("SpeedX: ");
-    // Serial.print(getSpeedX());
-    // Serial.print(" m/s, SpeedY: ");
-    // Serial.print(getSpeedY());
-    // Serial.println(" m/s");
-    Serial.printf("SpeedX: %.3f m/s, SpeedY: %.3f m/s\n", getSpeedX(), getSpeedY());
+    // Serial.printf("SpeedX: %.3f m/s, SpeedY: %.3f m/s\n", getSpeedX(), getSpeedY());
+    static uint32_t last_tx = 0;
+    if (millis() - last_tx >= 10) {            // 100 Hz
+    last_tx = millis();
+    if (Serial.availableForWrite() > 64) {   // 送れるときだけ
+        Serial.printf("%.3f,%.3f,%.3f\n", getSpeedX(), getSpeedY(), wz);
+    }
+    }
 
     if (controller.poll()) {
         const ControllerData &d = controller.data();
@@ -416,9 +415,9 @@ void loop() {
         //                 d.state, d.lx, d.ly, d.rx, d.ry, d.l2, d.r2, d.buttonsRaw);
 
         // Scale controller inputs to chassis velocities.
-        vx = (d.ly / kStickMax) * kMaxLinear;
-        vy = (d.lx / kStickMax) * kMaxLinear;
-        wz = (d.rx / kStickMax) * kMaxYawRate;
+        vx = d.ly* kMaxLinear;
+        vy = d.lx* kMaxLinear;
+        wz = d.rx* kMaxYawRate;
 
 
         if (d.buttons.triangle) {

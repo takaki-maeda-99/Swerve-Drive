@@ -1,59 +1,83 @@
 #pragma once
 #include <Arduino.h>
 #include <string.h>
+#include <stdlib.h>
 
 struct ControllerButtons {
-    bool square = false;
-    bool cross = false;
-    bool circle = false;
+    bool square   = false;
+    bool cross    = false;
+    bool circle   = false;
     bool triangle = false;
-    bool l1 = false;
-    bool r1 = false;
-    bool options = false;
-    bool share = false;
+    bool l1       = false;
+    bool r1       = false;
+    bool l3       = false;
+    bool r3       = false;
+    bool share    = false;
+    bool options  = false;
+    bool ps       = false;
+    bool touchpad = false;
+    bool up       = false;
+    bool down     = false;
+    bool left     = false;
+    bool right    = false;
 };
 
 struct ControllerData {
-    int16_t state = 0;
+    int16_t state      = 0;
     uint16_t buttonsRaw = 0;
-    int16_t lx = 0;
-    int16_t ly = 0;
-    int16_t rx = 0;
-    int16_t ry = 0;
-    int16_t l2 = 0;
-    int16_t r2 = 0;
+
+    float lx = 0.0f;
+    float ly = 0.0f;
+    float rx = 0.0f;
+    float ry = 0.0f;
+    float l2 = 0.0f;
+    float r2 = 0.0f;
+
     ControllerButtons buttons{};
 };
 
 class ControllerInput {
 public:
-    explicit ControllerInput(HardwareSerial &serial) : serial(serial) {}
+    // USBSerial 型で受けるように変更
+    explicit ControllerInput(usb_serial_class &serial) : serial(serial) {}
 
-    void begin(uint32_t baud) { serial.begin(baud); }
+    void begin(uint32_t baud) {
+        serial.begin(baud);    // USB CDC では実質意味ないが互換のため残す
+        while (!serial) { }    // USB が接続されるまで待機
+        serial.setTimeout(5);
+    }
 
-    // Read a line if available; return true only when data updated.
     bool poll() {
         if (!serial.available()) return false;
 
         String line = serial.readStringUntil('\n');
-        int values[8] = {0};
-        int idx = 0;
+        if (line.length() == 0) return false;
 
         char buf[line.length() + 1];
         line.toCharArray(buf, sizeof(buf));
-        for (char *tok = strtok(buf, ","); tok && idx < 8; tok = strtok(nullptr, ",")) {
-            values[idx++] = atoi(tok);
-        }
-        if (idx < 8) return false; // incomplete line
 
-        latest.state      = values[0];
-        latest.buttonsRaw = static_cast<uint16_t>(values[1]);
-        latest.lx         = values[2];
-        latest.ly         = values[3];
-        latest.rx         = values[4];
-        latest.ry         = values[5];
-        latest.l2         = values[6];
-        latest.r2         = values[7];
+        // state
+        char *tok = strtok(buf, ",");
+        if (!tok) return false;
+        latest.state = static_cast<int16_t>(atoi(tok));
+
+        // buttonsRaw
+        tok = strtok(nullptr, ",");
+        if (!tok) return false;
+        latest.buttonsRaw = static_cast<uint16_t>(strtoul(tok, nullptr, 10));
+
+        // lx, ly, rx, ry, l2, r2
+        float *targets[6] = {
+            &latest.lx, &latest.ly,
+            &latest.rx, &latest.ry,
+            &latest.l2, &latest.r2
+        };
+
+        for (int i = 0; i < 6; ++i) {
+            tok = strtok(nullptr, ",");
+            if (!tok) return false;
+            *targets[i] = atof(tok);
+        }
 
         decodeButtons(latest.buttonsRaw);
         return true;
@@ -62,7 +86,7 @@ public:
     const ControllerData &data() const { return latest; }
 
 private:
-    HardwareSerial &serial;
+    usb_serial_class &serial;
     ControllerData latest{};
 
     inline void decodeButtons(uint16_t raw) {
@@ -72,7 +96,15 @@ private:
         latest.buttons.triangle = raw & (1 << 3);
         latest.buttons.l1       = raw & (1 << 4);
         latest.buttons.r1       = raw & (1 << 5);
+        latest.buttons.l3       = raw & (1 << 6);
+        latest.buttons.r3       = raw & (1 << 7);
         latest.buttons.share    = raw & (1 << 8);
         latest.buttons.options  = raw & (1 << 9);
+        latest.buttons.ps       = raw & (1 << 10);
+        latest.buttons.touchpad = raw & (1 << 11);
+        latest.buttons.up       = raw & (1 << 12);
+        latest.buttons.down     = raw & (1 << 13);
+        latest.buttons.left     = raw & (1 << 14);
+        latest.buttons.right    = raw & (1 << 15);
     }
 };
