@@ -184,7 +184,7 @@ def main():
                     cols = latest_line.split(b",")
                     # デバッグ表示（必要なら削る）
                     print("Recv latest CSV:",
-                          [c.decode("ascii", "ignore") for c in cols])
+                          [c.decode("ascii", "ignore") for c in cols],lx,ly,rx,ry,l2,r2)
 
             # 軽くCPUを休ませる
             time.sleep(0.001)

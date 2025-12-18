@@ -75,7 +75,7 @@ FlexCAN_T4<CAN2, RX_SIZE_256, TX_SIZE_16> can2;
 DjiMotorCan<CAN2> steer_motors(can2, 72.0f);  // 72:1 ギア比で初期化
 DjiMotorCan<CAN1> wheel_motors(can1, 19.0f);  // 19:1 ギア比で初期化
 
-ControllerInput controller(Serial);
+ControllerInput controller(Serial5);
 IntervalTimer motorControlTimer;
 
 uint8_t myBoardId = 1;
@@ -355,8 +355,8 @@ uint8_t readBoardId() {
 
 
 void setup() {
-//   Serial.begin(57600);
-  controller.begin(115200);
+  Serial.begin(57600);
+  controller.begin(Serial5,115200);
   
   // DIPスイッチピン設定
   pinMode(DIP_PIN1, INPUT_PULLUP);
@@ -366,8 +366,6 @@ void setup() {
 
 // Board ID読み取り
   myBoardId = readBoardId();
-  Serial.printf("Board ID: %d\n", myBoardId);  
-
   pinMode(LSPIN11, INPUT_PULLUP);
   pinMode(LSPIN12, INPUT_PULLUP);
   pinMode(LSPIN21, INPUT_PULLUP);
@@ -398,12 +396,11 @@ void loop() {
     updateOdometrySpeed();
 
     // シリアルモニタへ速度を出力
-    // Serial.printf("SpeedX: %.3f m/s, SpeedY: %.3f m/s\n", getSpeedX(), getSpeedY());
     static uint32_t last_tx = 0;
     if (millis() - last_tx >= 10) {            // 100 Hz
     last_tx = millis();
-    if (Serial.availableForWrite() > 64) {   // 送れるときだけ
-        Serial.printf("%.3f,%.3f,%.3f\n", getSpeedX(), getSpeedY(), wz);
+    if (Serial5.availableForWrite() > 64) {   // 送れるときだけ
+        Serial5.printf("%.3f,%.3f,%.3f\n", getSpeedX(), getSpeedY(), wz);
     }
     }
 

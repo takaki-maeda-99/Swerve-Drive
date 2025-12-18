@@ -23,7 +23,7 @@ struct ControllerButtons {
 };
 
 struct ControllerData {
-    int16_t state      = 0;
+    int16_t  state = 0;
     uint16_t buttonsRaw = 0;
 
     float lx = 0.0f;
@@ -38,33 +38,42 @@ struct ControllerData {
 
 class ControllerInput {
 public:
-    // USBSerial 型で受けるように変更
-    explicit ControllerInput(usb_serial_class &serial) : serial(serial) {}
+    // USB/Hardware どちらでも渡せる
+    explicit ControllerInput(Stream &stream) : stream(stream) {}
 
-    void begin(uint32_t baud) {
-        serial.begin(baud);    // USB CDC では実質意味ないが互換のため残す
-        while (!serial) { }    // USB が接続されるまで待機
-        serial.setTimeout(5);
+    // beginは HardwareSerial / usb_serial_class のときだけ呼べばOK
+    // （呼ばなくてもコンパイル通るようにテンプレート化）
+    template <typename SerialLike>
+    void begin(SerialLike &s, uint32_t baud) {
+        s.begin(baud);
+        // USB系だけ「接続待ち」が有効な環境があるので、必要なら呼び出し側で待つのが安全
+        stream.setTimeout(5);
     }
 
-    bool poll() {
-        if (!serial.available()) return false;
+    // beginを使わない場合でも timeout だけは設定できる
+    void setTimeout(uint32_t ms) { stream.setTimeout(ms); }
 
-        String line = serial.readStringUntil('\n');
+    bool poll() {
+        // Stream共通APIで1行読む（\nまで）
+        if (stream.available() <= 0) return false;
+
+        String line = stream.readStringUntil('\n');
         if (line.length() == 0) return false;
 
+        // \r\n 対策
+        if (line.endsWith("\r")) line.remove(line.length() - 1);
+
+        // strtok用バッファ
         char buf[line.length() + 1];
         line.toCharArray(buf, sizeof(buf));
 
-        // state
         char *tok = strtok(buf, ",");
         if (!tok) return false;
-        latest.state = static_cast<int16_t>(atoi(tok));
+        latest.state = (int16_t)atoi(tok);
 
-        // buttonsRaw
         tok = strtok(nullptr, ",");
         if (!tok) return false;
-        latest.buttonsRaw = static_cast<uint16_t>(strtoul(tok, nullptr, 10));
+        latest.buttonsRaw = (uint16_t)strtoul(tok, nullptr, 10);
 
         // lx, ly, rx, ry, l2, r2
         float *targets[6] = {
@@ -76,7 +85,7 @@ public:
         for (int i = 0; i < 6; ++i) {
             tok = strtok(nullptr, ",");
             if (!tok) return false;
-            *targets[i] = atof(tok);
+            *targets[i] = (float)atof(tok);
         }
 
         decodeButtons(latest.buttonsRaw);
@@ -86,7 +95,7 @@ public:
     const ControllerData &data() const { return latest; }
 
 private:
-    usb_serial_class &serial;
+    Stream &stream;
     ControllerData latest{};
 
     inline void decodeButtons(uint16_t raw) {
