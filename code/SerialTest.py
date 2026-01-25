@@ -27,7 +27,8 @@ def apply_deadzone(x: float, deadzone: float = 0.1) -> float:
 
 def main():
     ser = serial.Serial(
-        port="COM5",
+        #port="COM5",
+        port='/dev/ttyACM0',
         baudrate=115200,
         timeout=0.01,       # 完全ノンブロッキング
         write_timeout=0.01,
@@ -159,6 +160,7 @@ def main():
                        f"{lx:.3f},{ly:.3f},{rx:.3f},{ry:.3f},{l2:.3f},{r2:.3f}\n"
                 try:
                     ser.write(line.encode("ascii"))
+                    #print(line,flush=True)
                 except serial.SerialTimeoutException:
                     # 無理に詰め込まない
                     pass
