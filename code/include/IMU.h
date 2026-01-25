@@ -33,26 +33,68 @@ class IMU_Manager {
             if(!bno.begin()){
                 return false;
             }
-            delay(500);
+            delay(50);
+            waitforCalibration();
             IMU_Reset();
             return true;
         }
+    void waitforCalibration(){
+        uint8_t system, gyro, accel, mag;
+        uint32_t start = millis();
+        const uint32_t timeout = 3000;
+        do{
+            bno.getCalibration(&system, &gyro, &accel, &mag);
+            delay(20);
+        }while(system < 3 && millis() - start < timeout);
+    }
     void IMU_Reset(){
-        gyro_x_offset = bno.getVector(Adafruit_BNO055::VECTOR_GYROSCOPE).x();
-        gyro_y_offset = bno.getVector(Adafruit_BNO055::VECTOR_GYROSCOPE).y();
-        gyro_z_offset = bno.getVector(Adafruit_BNO055::VECTOR_GYROSCOPE).z();
+        const int N = 5;
 
-        accel_x_offset = bno.getVector(Adafruit_BNO055::VECTOR_ACCELEROMETER).x();
-        accel_y_offset = bno.getVector(Adafruit_BNO055::VECTOR_ACCELEROMETER).y();
-        accel_z_offset = bno.getVector(Adafruit_BNO055::VECTOR_ACCELEROMETER).z();
+        float gx=0.0, gy=0.0, gz=0.0;
+        float ax=0.0, ay=0.0, az=0.0;
+        float mx=0.0, my=0.0, mz=0.0;
+        float yaw=0.0, pitch=0.0, roll=0.0;
 
-        mag_x_offset = bno.getVector(Adafruit_BNO055::VECTOR_MAGNETOMETER).x();
-        mag_y_offset = bno.getVector(Adafruit_BNO055::VECTOR_MAGNETOMETER).y();
-        mag_z_offset = bno.getVector(Adafruit_BNO055::VECTOR_MAGNETOMETER).z();
+        for(int i=0; i<N; i++){
+            imu::Vector<3> gyroscope = bno.getVector(Adafruit_BNO055::VECTOR_GYROSCOPE);
+            imu::Vector<3> accelermetor = bno.getVector(Adafruit_BNO055::VECTOR_ACCELEROMETER);
+            imu::Vector<3> magnetometer = bno.getVector(Adafruit_BNO055::VECTOR_MAGNETOMETER);
+            imu::Vector<3> euler = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
 
-        imu_euler_offset_yaw = bno.getVector(Adafruit_BNO055::VECTOR_EULER).x();
-        imu_euler_offset_pitch = bno.getVector(Adafruit_BNO055::VECTOR_EULER).y();
-        imu_euler_offset_roll = bno.getVector(Adafruit_BNO055::VECTOR_EULER).z();
+            gx += gyroscope.x();
+            gy += gyroscope.y();
+            gz += gyroscope.z();
+
+            ax += accelermetor.x();
+            ay += accelermetor.y();
+            az += accelermetor.z();
+
+            mx += magnetometer.x();
+            my += magnetometer.y();
+            mz += magnetometer.z();
+
+            yaw += euler.x();
+            pitch += euler.y();
+            roll += euler.z();
+
+            delay(5);
+        }
+
+        gyro_x_offset = gx / N;
+        gyro_y_offset = gy / N;
+        gyro_z_offset = gz / N;
+
+        accel_x_offset = ax / N;
+        accel_y_offset = ay / N;
+        accel_z_offset = az / N;
+
+        mag_x_offset = mx / N;
+        mag_y_offset = my / N;
+        mag_z_offset = mz / N;
+
+        imu_euler_offset_yaw = yaw / N;
+        imu_euler_offset_pitch = pitch / N;
+        imu_euler_offset_roll = roll / N;
     }
     //各種データ取得関数
     // 角速度データ取得 単位は[rad/s]
@@ -93,6 +135,14 @@ class IMU_Manager {
         if(yaw > 180.0) yaw -= 360.0;
         if(pitch > 180.0) pitch -= 360.0;
         if(roll > 180.0) roll -= 360.0;
+
+        //最終チェック
+        if(yaw < -180.0) yaw = -180.0;
+        else if(yaw > 180.0) yaw = 180.0;
+        if(pitch < -180.0) pitch = -180.0;
+        else if(pitch > 180.0) pitch = 180.0;
+        if(roll < -180.0) roll = -180.0;
+        else if(roll > 180.0) roll = 180.0;
         return IMU_Data_Vector3{yaw, pitch, roll};
     }
 
