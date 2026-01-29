@@ -49,6 +49,9 @@ constexpr std::array<WheelPosition, NUM_WHEELS> wheelPositions{{
 #define ODOMETRY_Y_ENCODER_A_PIN 14
 #define ODOMETRY_Y_ENCODER_B_PIN 15
 
+//B接点のピン定義
+#define B_SWITCH_PIN 21
+
 //オドメトリエンコーダー変数
 volatile int32_t encoderX_count = 0;
 volatile int32_t encoderY_count = 0;
@@ -406,6 +409,9 @@ void handleSerialCommand() {
               //Lスティック押し込み：11
               //Rスティック押し込み：12
               //-------------------------
+              if(cmd->buttons[1] == 1){ // 〇ボタン
+                  digitalWrite(B_SWITCH_PIN,  HIGH); // ロボット起動
+              }
               if(cmd->buttons[2] == 1){ // △ボタン
                   if(!lasthomingbuttonstate)
                   {
@@ -418,6 +424,10 @@ void handleSerialCommand() {
               if(cmd->buttons[3] == 1){ // □ボタン
                   imu_data.waitforCalibration();
                   imu_data.IMU_Reset();
+              }
+              if(cmd->buttons[9] == 1){ // STARTボタン
+                //停止
+                digitalWrite(B_SWITCH_PIN, LOW); // B接点ON
               }
               // for(int i=0; i<13; i++){
               //     Serial.printf("Button %d state: %d\n", i, cmd->buttons[i]);
@@ -453,6 +463,7 @@ void setup() {
     pinMode(ODOMETRY_X_ENCODER_B_PIN, INPUT_PULLUP);
     pinMode(ODOMETRY_Y_ENCODER_A_PIN, INPUT_PULLUP);
     pinMode(ODOMETRY_Y_ENCODER_B_PIN, INPUT_PULLUP);
+    pinMode(B_SWITCH_PIN, OUTPUT);
 
     // エンコーダー割り込み設定（立ち上がりのみ）
     // RISINGのみに設定されているが、ISRの実装は両方の変化を捕捉する四倍速エンコーディングに基づいているため、注意が必要
@@ -477,7 +488,7 @@ void loop() {
   // オドメトリ速度更新
   updateOdometrySpeed();
   // シリアルモニタへ速度を出力
-  // Serial.printf("SpeedX: %.3f m/s, SpeedY: %.3f m/s\n", getSpeedX(), getSpeedY());
+  //Serial.printf("SpeedX: %.3f m/s, SpeedY: %.3f m/s\n", getSpeedX(), getSpeedY());
   static uint32_t last_tx = 0;
   if (millis() - last_tx >= 10) {            // 100 Hz
   last_tx = millis();
