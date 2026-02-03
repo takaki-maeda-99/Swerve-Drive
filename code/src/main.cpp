@@ -288,7 +288,7 @@ void homing(){
   motorControlTimer.end();
   delay(500);
   Serial.print("Reset IMU.\n");
-  imu_data.IMU_Reset();
+  imu_data.begin();
   Serial.print("Restart motor control timer.\n");
   motorControlTimer.begin(ISR, 1000);
   motorControlTimer.priority(0);
@@ -346,7 +346,8 @@ void updateOdometrySpeed() {
 
 // オドメトリ速度取得関数
 float getSpeedX() {
-  return speedX;
+  //向きを逆にするための【-】をつける
+  return -speedX;
 }
 float getSpeedY() {
   return speedY;
@@ -364,15 +365,21 @@ struct __attribute__((packed)) RobotCommandPacket {
   float target_vx;
   float target_vy;
   float target_wz;
-  uint8_t buttons[13]; // コントローラのボタン状態
+  uint8_t mode[3]; // コントローラのボタン状態
   uint8_t checksum;
 };
 
 bool lasthomingbuttonstate = false;
+bool E_STOP = false;
+uint32_t lastSerialTime = 0;
+const uint32_t SERIAL_TIMEOUT = 500; // 500ms
 
 void handleSerialCommand() {
   static uint8_t rx_buf[sizeof(RobotCommandPacket)];
   static size_t rx_idx = 0;
+  vx = 0.0f;
+  vy = 0.0f;
+  wz = 0.0f;
   while (Serial.available()) {
       uint8_t c = Serial.read();
       // 1. ヘッダーの同期 (0xAA)
@@ -389,30 +396,28 @@ void handleSerialCommand() {
               sum += rx_buf[i];
           }
           if (sum == cmd->checksum) {
-              // 指示を機体速度に反映！
-              vx = cmd->target_vx * kMaxLinear;
-              vy = cmd->target_vy * kMaxLinear;
-              wz = cmd->target_wz * kMaxYawRate;
+              // 指示を機体速度に反映
+              vx = cmd->target_vx ;
+              vy = cmd->target_vy ;
+              wz = cmd->target_wz ;
               //-------------------------
-              //コントローラの入力番号定義
-              //✕：0
-              //〇：1
-              //△：2
-              //□：3
-              //L1：4
-              //R1：5
-              //L2：6
-              //R2：7
-              //SELECT：8
-              //START：9
-              //PS：10
-              //Lスティック押し込み：11
-              //Rスティック押し込み：12
+              //モード送信
+              //E_STOP :{1,0,0}
+              //HOMING :{0,1,0}
+              //RESET  :{0,0,1}
+              //ELSE   :{0,0,0}
               //-------------------------
-              if(cmd->buttons[1] == 1){ // 〇ボタン
-                  digitalWrite(B_SWITCH_PIN,  HIGH); // ロボット起動
+              if(cmd->mode[0] == 1){
+                E_STOP = true;
               }
-              if(cmd->buttons[2] == 1){ // △ボタン
+              else{
+                if(E_STOP){
+                  //停止解除
+                  E_STOP = false;
+                  digitalWrite(B_SWITCH_PIN, HIGH); // ロボット起動
+                }
+              }
+              if(cmd->mode [1] == 1){ // ホーミングモード
                   if(!lasthomingbuttonstate)
                   {
                       homing();
@@ -421,20 +426,25 @@ void handleSerialCommand() {
               } else {
                   lasthomingbuttonstate = false;
               }
-              if(cmd->buttons[3] == 1){ // □ボタン
+              if(cmd->mode[2] == 1){ // リセットモード
                   imu_data.waitforCalibration();
                   imu_data.IMU_Reset();
               }
-              if(cmd->buttons[9] == 1){ // STARTボタン
+              if(E_STOP){ // STARTボタン
                 //停止
-                digitalWrite(B_SWITCH_PIN, LOW); // B接点ON
+                vx = 0.0f;
+                vy = 0.0f;
+                wz = 0.0f;
+                digitalWrite(B_SWITCH_PIN, LOW); // 電源オフ
               }
-              // for(int i=0; i<13; i++){
-              //     Serial.printf("Button %d state: %d\n", i, cmd->buttons[i]);
-              // }
+              lastSerialTime = millis();
           }
           rx_idx = 0; // バッファをリセット
       }
+  }
+  if(millis() - lastSerialTime > SERIAL_TIMEOUT){
+      //電源を強制オフ
+      digitalWrite(B_SWITCH_PIN, LOW); // 電源オフ
   }
 }
 
@@ -472,9 +482,10 @@ void setup() {
 
     // IMU初期化
     if(!imu_data.begin()){
-        Serial.println("IMU initialization failed!");
+        //Serial.println("IMU initialization failed!");
         // 失敗時の処理（必要に応じて）
     }
+    delay(1000); // IMUの安定化待ち
 
     // モーター制御タイマー開始 (1kHz = 1000μs間隔)
     motorControlTimer.begin(ISR, 1000);
@@ -497,7 +508,6 @@ void loop() {
       // 1. データの詰め込み
           packet.vx = getSpeedX();
           packet.vy = getSpeedY();
-          packet.wz = wz;
 
           auto a = imu_data.Get_IMU_ACCEL();
           packet.accel_x = (float)a.x;
@@ -533,21 +543,21 @@ void loop() {
   }
   }
 
-  if (controller.poll()) {
-      const ControllerData &d = controller.data();
-      // Monitor controller input.
-      // Serial.printf("ctrl state:%d lx:%d ly:%d rx:%d ry:%d l2:%d r2:%d buttons:0x%04X\n",
-      //                 d.state, d.lx, d.ly, d.rx, d.ry, d.l2, d.r2, d.buttonsRaw);
-      // Scale controller inputs to chassis velocities.
-      vx = d.ly* kMaxLinear;
-      vy = d.lx* kMaxLinear;
-      wz = d.rx* kMaxYawRate;
+  // if (controller.poll()) {
+  //     const ControllerData &d = controller.data();
+  //     // Monitor controller input.
+  //     // Serial.printf("ctrl state:%d lx:%d ly:%d rx:%d ry:%d l2:%d r2:%d buttons:0x%04X\n",
+  //     //                 d.state, d.lx, d.ly, d.rx, d.ry, d.l2, d.r2, d.buttonsRaw);
+  //     // Scale controller inputs to chassis velocities.
+  //     vx = d.ly;
+  //     vy = d.lx;
+  //     wz = d.rx;
 
-      if (d.buttons.triangle) {
-          Serial.println("Homing restart requested");
-          homing();
-      }
-  }
+  //     if (d.buttons.triangle) {
+  //         Serial.println("Homing restart requested");
+  //         homing();
+  //     }
+  // }
   // if(digitalRead(LSPIN11)){
   //     imu_data.IMU_Reset();
   //     Serial.println("IMU Reset executed");
