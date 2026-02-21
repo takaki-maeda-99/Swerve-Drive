@@ -236,20 +236,26 @@ struct RobotSensorPacket {
 IMU_Manager imu_data;
 RobotSensorPacket packet;
 
+constexpr float kSteerAlignThreshold = 0.15f; // [rad] ステアリングが目標角度にこれ以内なら走行許可 (~8.6deg)
+
 void ISR() {
   // Inverse kinematics to per-wheel targets.
   const auto wheelCommands = ik(vx, vy, wz);
-  // Monitor IK outputs.
-//   Serial.printf("vx:%.3f vy:%.3f wz:%.3f\n", vx, vy, wz);
-//   for (size_t i = 0; i < NUM_WHEELS; ++i) {
-//       Serial.printf("wheel[%u] angle:%.3f speed:%.3f\n",
-//                       (unsigned)i, wheelCommands[i].angle, wheelCommands[i].speed);
-//   }
+
   // Apply steering and drive commands.
+  // ステアリングを先に目標角度へ向け、近づいてからホイールを回す
   for (size_t i = 0; i < NUM_WHEELS; ++i) {
       steer_angleControl(i, wheelCommands[i].angle, false, steer_motors);
-      const float wheelAngular = (wheelCommands[i].speed / kWheelRadius);
-      wheel_speedControl(i, wheelAngular, wheel_motors);
+
+      const auto &fb = steer_motors.feedback(i + 1);
+      float angleError = fabsf(wrapPi(wheelCommands[i].angle - fb.getAngleRadiansWrapped()));
+
+      if (angleError < kSteerAlignThreshold) {
+          const float wheelAngular = (wheelCommands[i].speed / kWheelRadius);
+          wheel_speedControl(i, wheelAngular, wheel_motors);
+      } else {
+          wheel_speedControl(i, 0.0f, wheel_motors);
+      }
   }
   steer_motors.flush();
   wheel_motors.flush();
@@ -285,6 +291,13 @@ void homing(){
       delay(1);
   }
   Serial.print("Homing complete.\n");
+  // 全モーターを停止（imu_data.begin()中に回り続けるのを防止）
+  for (int i = 0; i < 4; i++) {
+      steer_motors.sendCurrent(i + 1, 0);
+      wheel_motors.sendCurrent(i + 1, 0);
+  }
+  steer_motors.flush();
+  wheel_motors.flush();
   motorControlTimer.end();
   delay(500);
   Serial.print("Reset IMU.\n");
