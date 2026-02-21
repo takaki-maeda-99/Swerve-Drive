@@ -114,10 +114,10 @@ Pid SteerSpeedPid[4] = {
 
 // ホイール速度用 PID
 Pid WheelSpeedPid[4] = {
-  Pid(1600, 0, 10, -14000.0, 14000.0, 1), // wheel 0
-  Pid(1600, 0, 10, -14000.0, 14000.0, 1), // wheel 1
-  Pid(1600, 0, 10, -14000.0, 14000.0, 1), // wheel 2
-  Pid(1600, 0, 10, -14000.0, 14000.0, 1), // wheel 3
+  Pid(2000, 0, 10, -14000.0, 14000.0, 1), // wheel 0
+  Pid(2000, 0, 10, -14000.0, 14000.0, 1), // wheel 1
+  Pid(2000, 0, 10, -14000.0, 14000.0, 1), // wheel 2
+  Pid(2000, 0, 10, -14000.0, 14000.0, 1), // wheel 3
 };
 
 inline void steer_angleControl(size_t idx, float targetAngle, bool bounded, DjiMotorCan<CAN2> &motors) {
