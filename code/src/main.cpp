@@ -52,6 +52,11 @@ constexpr std::array<WheelPosition, NUM_WHEELS> wheelPositions{{
 //B接点のピン定義
 #define B_SWITCH_PIN 21
 
+//ライトのピン定義 番号は要修正
+// #define LIGHT_PIN_RED 100
+// #define LIGHT_PIN_GREEN 101
+// #define LIGHT_PIN_BLUE 102
+
 //オドメトリエンコーダー変数
 volatile int32_t encoderX_count = 0;
 volatile int32_t encoderY_count = 0;
@@ -82,6 +87,28 @@ ControllerInput controller(Serial);
 IntervalTimer motorControlTimer;
 
 uint8_t myBoardId = 1;
+
+// ---- ファン制御 ----
+constexpr uint16_t FAN_STOP    = 1100;
+constexpr uint16_t FAN_MAX     = 1940;
+
+// pwmVal: 1100(停止) 〜 1940(最大)
+void sendFanPWM(uint16_t pwmVal) {
+    CAN_message_t msg;
+    msg.id     = 0x100;
+    msg.len    = 2;
+    msg.buf[0] = pwmVal & 0xFF;
+    msg.buf[1] = (pwmVal >> 8) & 0xFF;
+    can1.write(msg);
+}
+
+// ratio: 0.0(停止) 〜 1.0(最大)
+void setFanSpeed(float ratio) {
+    ratio = constrain(ratio, 0.0f, 1.0f);
+    uint16_t pwm = (uint16_t)(FAN_STOP + ratio * (FAN_MAX - FAN_STOP));
+    sendFanPWM(pwm);
+}
+// --------------------
 
 bool homing_inprogress = false;
 
@@ -300,6 +327,18 @@ void homing(){
   wheel_motors.flush();
   motorControlTimer.end();
   delay(500);
+  // ファン動作テスト（ホーミング確認用）
+  Serial.print("Fan test...\n");
+  {
+    uint32_t fanStart = millis();
+    while (millis() - fanStart < 3000) {
+      sendFanPWM(1200);
+      delay(10);
+    }
+    sendFanPWM(0);
+  }
+  Serial.print("Fan test done.\n");
+
   Serial.print("Reset IMU.\n");
   imu_data.begin();
   Serial.print("Restart motor control timer.\n");
@@ -379,6 +418,7 @@ struct __attribute__((packed)) RobotCommandPacket {
   float target_vy;
   float target_wz;
   uint8_t mode[3]; // コントローラのボタン状態
+  //uint8_t light[3]; // ライトの状態
   uint8_t checksum;
 };
 
@@ -450,6 +490,22 @@ void handleSerialCommand() {
                 wz = 0.0f;
                 digitalWrite(B_SWITCH_PIN, LOW); // 電源オフ
               }
+              // ライトの制御
+              // if(cmd->light[0] == 1){ // 赤
+              //     digitalWrite(LIGHT_PIN_RED, HIGH);
+              // } else {
+              //     digitalWrite(LIGHT_PIN_RED, LOW);
+              // }
+              // if(cmd->light[1] == 1){ // 緑
+              //     digitalWrite(LIGHT_PIN_GREEN, HIGH);
+              // } else {
+              //     digitalWrite(LIGHT_PIN_GREEN, LOW);
+              // }
+              // if(cmd->light[2] == 1){ // 青
+              //     digitalWrite(LIGHT_PIN_BLUE, HIGH);
+              // } else {
+              //     digitalWrite(LIGHT_PIN_BLUE, LOW);
+              // }
               lastSerialTime = millis();
           }
           rx_idx = 0; // バッファをリセット
