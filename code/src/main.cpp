@@ -53,9 +53,9 @@ constexpr std::array<WheelPosition, NUM_WHEELS> wheelPositions{{
 #define B_SWITCH_PIN 21
 
 //ライトのピン定義 番号は要修正
-// #define LIGHT_PIN_RED 100
-// #define LIGHT_PIN_GREEN 101
-// #define LIGHT_PIN_BLUE 102
+#define LIGHT_PIN_RED 18
+#define LIGHT_PIN_GREEN 19
+#define LIGHT_PIN_ORANGE 20
 
 //オドメトリエンコーダー変数
 volatile int32_t encoderX_count = 0;
@@ -496,9 +496,9 @@ void handleSerialCommand() {
                 digitalWrite(B_SWITCH_PIN, LOW); // 電源オフ
               }
               // ライトの制御 (TODO: ピン番号確定後にコメントアウト解除)
-              // if(cmd->light[0] == 1){ digitalWrite(LIGHT_PIN_RED,   HIGH); } else { digitalWrite(LIGHT_PIN_RED,   LOW); }
-              // if(cmd->light[1] == 1){ digitalWrite(LIGHT_PIN_GREEN, HIGH); } else { digitalWrite(LIGHT_PIN_GREEN, LOW); }
-              // if(cmd->light[2] == 1){ digitalWrite(LIGHT_PIN_BLUE,  HIGH); } else { digitalWrite(LIGHT_PIN_BLUE,  LOW); }
+              if(cmd->light[0] == 1){ digitalWrite(LIGHT_PIN_RED,   HIGH); } else { digitalWrite(LIGHT_PIN_RED,   LOW); }
+              if(cmd->light[1] == 1){ digitalWrite(LIGHT_PIN_GREEN, HIGH); } else { digitalWrite(LIGHT_PIN_GREEN, LOW); }
+              if(cmd->light[2] == 1){ digitalWrite(LIGHT_PIN_ORANGE,  HIGH); } else { digitalWrite(LIGHT_PIN_ORANGE,  LOW); }
               // ファン制御
               fan1_on = (cmd->fan[0] == 1);
               fan2_on = (cmd->fan[1] == 1);
@@ -539,6 +539,9 @@ void setup() {
     pinMode(ODOMETRY_Y_ENCODER_A_PIN, INPUT_PULLUP);
     pinMode(ODOMETRY_Y_ENCODER_B_PIN, INPUT_PULLUP);
     pinMode(B_SWITCH_PIN, OUTPUT);
+    pinMode(LIGHT_PIN_RED, OUTPUT);
+    pinMode(LIGHT_PIN_GREEN, OUTPUT);
+    pinMode(LIGHT_PIN_ORANGE, OUTPUT);
 
     // エンコーダー割り込み設定（立ち上がりのみ）
     // RISINGのみに設定されているが、ISRの実装は両方の変化を捕捉する四倍速エンコーディングに基づいているため、注意が必要
