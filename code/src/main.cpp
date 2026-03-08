@@ -108,6 +108,15 @@ void setFanSpeed(float ratio) {
     uint16_t pwm = (uint16_t)(FAN_STOP + ratio * (FAN_MAX - FAN_STOP));
     sendFanPWM(pwm);
 }
+
+void sendFan2PWM(uint16_t pwmVal) {
+    CAN_message_t msg;
+    msg.id     = 0x101;
+    msg.len    = 2;
+    msg.buf[0] = pwmVal & 0xFF;
+    msg.buf[1] = (pwmVal >> 8) & 0xFF;
+    can1.write(msg);
+}
 // --------------------
 
 bool homing_inprogress = false;
@@ -329,14 +338,7 @@ void homing(){
   delay(500);
   // ファン動作テスト（ホーミング確認用）
   Serial.print("Fan test...\n");
-  {
-    uint32_t fanStart = millis();
-    while (millis() - fanStart < 3000) {
-      sendFanPWM(1200);
-      delay(10);
-    }
-    sendFanPWM(0);
-  }
+
   Serial.print("Fan test done.\n");
 
   Serial.print("Reset IMU.\n");
@@ -417,13 +419,16 @@ struct __attribute__((packed)) RobotCommandPacket {
   float target_vx;
   float target_vy;
   float target_wz;
-  uint8_t mode[3]; // コントローラのボタン状態
-  //uint8_t light[3]; // ライトの状態
+  uint8_t mode[3];  // E_STOP, HOMING, RESET
+  uint8_t light[3]; // RGB (TODO: ピン番号未定)
+  uint8_t fan[2];   // fan1, fan2 (0=停止, 1=最大)
   uint8_t checksum;
 };
 
 bool lasthomingbuttonstate = false;
 bool E_STOP = false;
+bool fan1_on = false;
+bool fan2_on = false;
 uint32_t lastSerialTime = 0;
 const uint32_t SERIAL_TIMEOUT = 500; // 500ms
 
@@ -490,22 +495,13 @@ void handleSerialCommand() {
                 wz = 0.0f;
                 digitalWrite(B_SWITCH_PIN, LOW); // 電源オフ
               }
-              // ライトの制御
-              // if(cmd->light[0] == 1){ // 赤
-              //     digitalWrite(LIGHT_PIN_RED, HIGH);
-              // } else {
-              //     digitalWrite(LIGHT_PIN_RED, LOW);
-              // }
-              // if(cmd->light[1] == 1){ // 緑
-              //     digitalWrite(LIGHT_PIN_GREEN, HIGH);
-              // } else {
-              //     digitalWrite(LIGHT_PIN_GREEN, LOW);
-              // }
-              // if(cmd->light[2] == 1){ // 青
-              //     digitalWrite(LIGHT_PIN_BLUE, HIGH);
-              // } else {
-              //     digitalWrite(LIGHT_PIN_BLUE, LOW);
-              // }
+              // ライトの制御 (TODO: ピン番号確定後にコメントアウト解除)
+              // if(cmd->light[0] == 1){ digitalWrite(LIGHT_PIN_RED,   HIGH); } else { digitalWrite(LIGHT_PIN_RED,   LOW); }
+              // if(cmd->light[1] == 1){ digitalWrite(LIGHT_PIN_GREEN, HIGH); } else { digitalWrite(LIGHT_PIN_GREEN, LOW); }
+              // if(cmd->light[2] == 1){ digitalWrite(LIGHT_PIN_BLUE,  HIGH); } else { digitalWrite(LIGHT_PIN_BLUE,  LOW); }
+              // ファン制御
+              fan1_on = (cmd->fan[0] == 1);
+              fan2_on = (cmd->fan[1] == 1);
               lastSerialTime = millis();
           }
           rx_idx = 0; // バッファをリセット
@@ -554,7 +550,12 @@ void setup() {
         //Serial.println("IMU initialization failed!");
         // 失敗時の処理（必要に応じて）
     }
-    delay(1000); // IMUの安定化待ち
+
+    for(int i = 0; i < 200; i++) {  // 2秒間
+      sendFanPWM(FAN_STOP);
+      sendFan2PWM(FAN_STOP);
+      delay(10);
+    }
 
     // モーター制御タイマー開始 (1kHz = 1000μs間隔)
     motorControlTimer.begin(ISR, 1000);
@@ -564,6 +565,8 @@ void setup() {
 }
 
 void loop() {
+  sendFanPWM( fan1_on ? 1300 : FAN_STOP);
+  sendFan2PWM(fan2_on ? 1300 : FAN_STOP);
   handleSerialCommand();
   // オドメトリ速度更新
   updateOdometrySpeed();
