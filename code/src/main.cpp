@@ -1,4 +1,4 @@
-#include <FlexCAN_T4.h>
+//#include <FlexCAN_T4.h>
 #include <IntervalTimer.h>
 #include "DjiMotor.hpp"
 #include "PID.h"
@@ -88,36 +88,36 @@ IntervalTimer motorControlTimer;
 
 uint8_t myBoardId = 1;
 
-// ---- ファン制御 ----
-constexpr uint16_t FAN_STOP    = 1100;
-constexpr uint16_t FAN_MAX     = 1940;
+// // ---- ファン制御 ----
+// constexpr uint16_t FAN_STOP    = 1100;
+// constexpr uint16_t FAN_MAX     = 1940;
 
-// pwmVal: 1100(停止) 〜 1940(最大)
-void sendFanPWM(uint16_t pwmVal) {
-    CAN_message_t msg;
-    msg.id     = 0x100;
-    msg.len    = 2;
-    msg.buf[0] = pwmVal & 0xFF;
-    msg.buf[1] = (pwmVal >> 8) & 0xFF;
-    can1.write(msg);
-}
+// // pwmVal: 1100(停止) 〜 1940(最大)
+// void sendFanPWM(uint16_t pwmVal) {
+//     CAN_message_t msg;
+//     msg.id     = 0x100;
+//     msg.len    = 2;
+//     msg.buf[0] = pwmVal & 0xFF;
+//     msg.buf[1] = (pwmVal >> 8) & 0xFF;
+//     can1.write(msg);
+// }
 
-// ratio: 0.0(停止) 〜 1.0(最大)
-void setFanSpeed(float ratio) {
-    ratio = constrain(ratio, 0.0f, 1.0f);
-    uint16_t pwm = (uint16_t)(FAN_STOP + ratio * (FAN_MAX - FAN_STOP));
-    sendFanPWM(pwm);
-}
+// // ratio: 0.0(停止) 〜 1.0(最大)
+// void setFanSpeed(float ratio) {
+//     ratio = constrain(ratio, 0.0f, 1.0f);
+//     uint16_t pwm = (uint16_t)(FAN_STOP + ratio * (FAN_MAX - FAN_STOP));
+//     sendFanPWM(pwm);
+// }
 
-void sendFan2PWM(uint16_t pwmVal) {
-    CAN_message_t msg;
-    msg.id     = 0x101;
-    msg.len    = 2;
-    msg.buf[0] = pwmVal & 0xFF;
-    msg.buf[1] = (pwmVal >> 8) & 0xFF;
-    can1.write(msg);
-}
-// --------------------
+// void sendFan2PWM(uint16_t pwmVal) {
+//     CAN_message_t msg;
+//     msg.id     = 0x101;
+//     msg.len    = 2;
+//     msg.buf[0] = pwmVal & 0xFF;
+//     msg.buf[1] = (pwmVal >> 8) & 0xFF;
+//     can1.write(msg);
+// }
+// // --------------------
 
 bool homing_inprogress = false;
 
@@ -251,9 +251,9 @@ std::array<WheelCommand, NUM_WHEELS> ik(float vx, float vy, float wz) {
   return wheelCommands;
 }
 
-float vx = 0;
-float vy = 0;
-float wz = 0;
+volatile float vx = 0;
+volatile float vy = 0;
+volatile float wz = 0;
 
 // 送信データの構造体定義
 struct RobotSensorPacket {
@@ -265,7 +265,7 @@ struct RobotSensorPacket {
    // IMUデータ (必要最低限のものを選択)
   float accel_x, accel_y, accel_z; // [m/s^2]
   float gyro_x, gyro_y, gyro_z;    // [rad/s]
-  float mag_x, mag_y, mag_z;       // [μT]
+  //float mag_x, mag_y, mag_z;       // [μT]
   float yaw, pitch, roll;          // [degree]
    uint8_t checksum; // データが壊れていないか確認用
 } __attribute__((packed)); // 隙間なく詰め込む指定
@@ -273,6 +273,9 @@ IMU_Manager imu_data;
 RobotSensorPacket packet;
 
 constexpr float kSteerAlignThreshold = 0.15f; // [rad] ステアリングが目標角度にこれ以内なら走行許可 (~8.6deg)
+
+// volatile bool fan1_on = false;
+// volatile bool fan2_on = false;
 
 void ISR() {
   // Inverse kinematics to per-wheel targets.
@@ -300,7 +303,7 @@ void ISR() {
 void homing(){
   if(homing_inprogress) return;
   homing_inprogress = true;
-  Serial.print("Starting homing procedure...\n");
+  //Serial.print("Starting homing procedure...\n");
   const float homeAngles[4] = {PI/2.0f, 0.0f, -PI/2.0f, PI};
    motorControlTimer.end();
    bool homingComplete[4] = {false};
@@ -326,7 +329,7 @@ void homing(){
       steer_motors.flush();
       delay(1);
   }
-  Serial.print("Homing complete.\n");
+  //Serial.print("Homing complete.\n");
   // 全モーターを停止（imu_data.begin()中に回り続けるのを防止）
   for (int i = 0; i < 4; i++) {
       steer_motors.sendCurrent(i + 1, 0);
@@ -337,13 +340,13 @@ void homing(){
   motorControlTimer.end();
   delay(500);
   // ファン動作テスト（ホーミング確認用）
-  Serial.print("Fan test...\n");
+  //Serial.print("Fan test...\n");
 
-  Serial.print("Fan test done.\n");
+  //Serial.print("Fan test done.\n");
 
-  Serial.print("Reset IMU.\n");
+  //Serial.print("Reset IMU.\n");
   imu_data.begin();
-  Serial.print("Restart motor control timer.\n");
+  //Serial.print("Restart motor control timer.\n");
   motorControlTimer.begin(ISR, 1000);
   motorControlTimer.priority(0);
   homing_inprogress = false;
@@ -421,14 +424,12 @@ struct __attribute__((packed)) RobotCommandPacket {
   float target_wz;
   uint8_t mode[3];  // E_STOP, HOMING, RESET
   uint8_t light[3]; // RGB (TODO: ピン番号未定)
-  uint8_t fan[2];   // fan1, fan2 (0=停止, 1=最大)
+  //uint8_t fan[2];   // fan1, fan2 (0=停止, 1=最大)
   uint8_t checksum;
 };
 
 bool lasthomingbuttonstate = false;
 bool E_STOP = false;
-bool fan1_on = false;
-bool fan2_on = false;
 uint32_t lastSerialTime = 0;
 const uint32_t SERIAL_TIMEOUT = 500; // 500ms
 
@@ -500,8 +501,8 @@ void handleSerialCommand() {
               if(cmd->light[1] == 1){ digitalWrite(LIGHT_PIN_GREEN, HIGH); } else { digitalWrite(LIGHT_PIN_GREEN, LOW); }
               if(cmd->light[2] == 1){ digitalWrite(LIGHT_PIN_ORANGE,  HIGH); } else { digitalWrite(LIGHT_PIN_ORANGE,  LOW); }
               // ファン制御
-              fan1_on = (cmd->fan[0] == 1);
-              fan2_on = (cmd->fan[1] == 1);
+              //fan1_on = (cmd->fan[0] == 1);
+              //fan2_on = (cmd->fan[1] == 1);
               lastSerialTime = millis();
           }
           rx_idx = 0; // バッファをリセット
@@ -524,7 +525,7 @@ void setup() {
 
     // Board ID読み取り
     myBoardId = readBoardId();
-    Serial.printf("Board ID: %d\n", myBoardId);
+    //Serial.printf("Board ID: %d\n", myBoardId);
 
     pinMode(LSPIN11, INPUT_PULLUP);
     pinMode(LSPIN12, INPUT_PULLUP);
@@ -554,11 +555,11 @@ void setup() {
         // 失敗時の処理（必要に応じて）
     }
 
-    for(int i = 0; i < 200; i++) {  // 2秒間
-      sendFanPWM(FAN_STOP);
-      sendFan2PWM(FAN_STOP);
-      delay(10);
-    }
+    // for(int i = 0; i < 200; i++) {  // 2秒間
+    //   sendFanPWM(FAN_STOP);
+    //   sendFan2PWM(FAN_STOP);
+    //   delay(10);
+    // }
 
     // モーター制御タイマー開始 (1kHz = 1000μs間隔)
     motorControlTimer.begin(ISR, 1000);
@@ -568,9 +569,12 @@ void setup() {
 }
 
 void loop() {
-  sendFanPWM( fan1_on ? 1300 : FAN_STOP);
-  sendFan2PWM(fan2_on ? 1300 : FAN_STOP);
   handleSerialCommand();
+
+  //3900KV3S 1300PW　対応
+  // sendFanPWM( fan1_on ? 1400 : FAN_STOP);
+  // sendFan2PWM(fan2_on ? 1400 : FAN_STOP);
+
   // オドメトリ速度更新
   updateOdometrySpeed();
   // シリアルモニタへ速度を出力
@@ -594,10 +598,10 @@ void loop() {
           packet.gyro_y = (float)g.y;
           packet.gyro_z = (float)g.z;
 
-          auto m = imu_data.Get_IMU_MAG();
-          packet.mag_x = (float)m.x;
-          packet.mag_y = (float)m.y;
-          packet.mag_z = (float)m.z;
+          // auto m = imu_data.Get_IMU_MAG();
+          // packet.mag_x = (float)m.x;
+          // packet.mag_y = (float)m.y;
+          // packet.mag_z = (float)m.z;
 
           auto e = imu_data.Get_IMU_EULER();
           packet.yaw   = (float)e.x;
@@ -637,5 +641,5 @@ void loop() {
   //     imu_data.IMU_Reset();
   //     Serial.println("IMU Reset executed");
   // }
-   delay(10);
+  delay(10);
 }
