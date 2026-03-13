@@ -44,5 +44,5 @@ state,buttons,lx,ly,rx,ry,l2,r2\n
 
 Send one line per update; faster rates improve responsiveness but avoid flooding the port (e.g., 50?100 Hz is sufficient).
 
-##　書き込みコマンド 2つのTeensyとPCを繋げたので書き込むときに判別するため
-~/.platformio/penv/bin/pio run -e ttyTeensy -t upload
+<!-- ##　書き込みコマンド 2つのTeensyとPCを繋げたので書き込むときに判別するため
+~/.platformio/penv/bin/pio run -e ttyTeensy -t upload -->

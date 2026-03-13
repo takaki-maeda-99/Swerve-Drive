@@ -1,4 +1,4 @@
-//#include <FlexCAN_T4.h>
+#include <FlexCAN_T4.h>
 #include <IntervalTimer.h>
 #include "DjiMotor.hpp"
 #include "PID.h"
@@ -88,36 +88,36 @@ IntervalTimer motorControlTimer;
 
 uint8_t myBoardId = 1;
 
-// // ---- ファン制御 ----
-// constexpr uint16_t FAN_STOP    = 1100;
-// constexpr uint16_t FAN_MAX     = 1940;
+// ---- ファン制御 ----
+constexpr uint16_t FAN_STOP    = 1100;
+constexpr uint16_t FAN_MAX     = 1940;
 
-// // pwmVal: 1100(停止) 〜 1940(最大)
-// void sendFanPWM(uint16_t pwmVal) {
-//     CAN_message_t msg;
-//     msg.id     = 0x100;
-//     msg.len    = 2;
-//     msg.buf[0] = pwmVal & 0xFF;
-//     msg.buf[1] = (pwmVal >> 8) & 0xFF;
-//     can1.write(msg);
-// }
+// pwmVal: 1100(停止) 〜 1940(最大)
+void sendFanPWM(uint16_t pwmVal) {
+    CAN_message_t msg;
+    msg.id     = 0x100;
+    msg.len    = 2;
+    msg.buf[0] = pwmVal & 0xFF;
+    msg.buf[1] = (pwmVal >> 8) & 0xFF;
+    can1.write(msg);
+}
 
-// // ratio: 0.0(停止) 〜 1.0(最大)
-// void setFanSpeed(float ratio) {
-//     ratio = constrain(ratio, 0.0f, 1.0f);
-//     uint16_t pwm = (uint16_t)(FAN_STOP + ratio * (FAN_MAX - FAN_STOP));
-//     sendFanPWM(pwm);
-// }
+// ratio: 0.0(停止) 〜 1.0(最大)
+void setFanSpeed(float ratio) {
+    ratio = constrain(ratio, 0.0f, 1.0f);
+    uint16_t pwm = (uint16_t)(FAN_STOP + ratio * (FAN_MAX - FAN_STOP));
+    sendFanPWM(pwm);
+}
 
-// void sendFan2PWM(uint16_t pwmVal) {
-//     CAN_message_t msg;
-//     msg.id     = 0x101;
-//     msg.len    = 2;
-//     msg.buf[0] = pwmVal & 0xFF;
-//     msg.buf[1] = (pwmVal >> 8) & 0xFF;
-//     can1.write(msg);
-// }
-// // --------------------
+void sendFan2PWM(uint16_t pwmVal) {
+    CAN_message_t msg;
+    msg.id     = 0x101;
+    msg.len    = 2;
+    msg.buf[0] = pwmVal & 0xFF;
+    msg.buf[1] = (pwmVal >> 8) & 0xFF;
+    can1.write(msg);
+}
+// --------------------
 
 bool homing_inprogress = false;
 
@@ -274,8 +274,8 @@ RobotSensorPacket packet;
 
 constexpr float kSteerAlignThreshold = 0.15f; // [rad] ステアリングが目標角度にこれ以内なら走行許可 (~8.6deg)
 
-// volatile bool fan1_on = false;
-// volatile bool fan2_on = false;
+volatile bool fan1_on = false;
+volatile bool fan2_on = false;
 
 void ISR() {
   // Inverse kinematics to per-wheel targets.
@@ -424,7 +424,7 @@ struct __attribute__((packed)) RobotCommandPacket {
   float target_wz;
   uint8_t mode[3];  // E_STOP, HOMING, RESET
   uint8_t light[3]; // RGB (TODO: ピン番号未定)
-  //uint8_t fan[2];   // fan1, fan2 (0=停止, 1=最大)
+  uint8_t fan[2];   // fan1, fan2 (0=停止, 1=最大)
   uint8_t checksum;
 };
 
@@ -501,8 +501,8 @@ void handleSerialCommand() {
               if(cmd->light[1] == 1){ digitalWrite(LIGHT_PIN_GREEN, HIGH); } else { digitalWrite(LIGHT_PIN_GREEN, LOW); }
               if(cmd->light[2] == 1){ digitalWrite(LIGHT_PIN_ORANGE,  HIGH); } else { digitalWrite(LIGHT_PIN_ORANGE,  LOW); }
               // ファン制御
-              //fan1_on = (cmd->fan[0] == 1);
-              //fan2_on = (cmd->fan[1] == 1);
+              fan1_on = (cmd->fan[0] == 1);
+              fan2_on = (cmd->fan[1] == 1);
               lastSerialTime = millis();
           }
           rx_idx = 0; // バッファをリセット
@@ -555,11 +555,11 @@ void setup() {
         // 失敗時の処理（必要に応じて）
     }
 
-    // for(int i = 0; i < 200; i++) {  // 2秒間
-    //   sendFanPWM(FAN_STOP);
-    //   sendFan2PWM(FAN_STOP);
-    //   delay(10);
-    // }
+    for(int i = 0; i < 200; i++) {  // 2秒間
+      sendFanPWM(FAN_STOP);
+      sendFan2PWM(FAN_STOP);
+      delay(10);
+    }
 
     // モーター制御タイマー開始 (1kHz = 1000μs間隔)
     motorControlTimer.begin(ISR, 1000);
@@ -572,8 +572,8 @@ void loop() {
   handleSerialCommand();
 
   //3900KV3S 1300PW　対応
-  // sendFanPWM( fan1_on ? 1400 : FAN_STOP);
-  // sendFan2PWM(fan2_on ? 1400 : FAN_STOP);
+  sendFanPWM( fan1_on ? 1300 : FAN_STOP);
+  sendFan2PWM(fan2_on ? 1300 : FAN_STOP);
 
   // オドメトリ速度更新
   updateOdometrySpeed();
